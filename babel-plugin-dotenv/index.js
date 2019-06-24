@@ -1,48 +1,70 @@
-var dotEnv = require('dotenv');
-var fs = require('fs');
-var sysPath = require('path');
-var process = require('process');
+var dotEnv = require("dotenv");
+var fs = require("fs");
+var sysPath = require("path");
+var process = require("process");
 
-module.exports = function (data) {
-    var t = data.types;
+const configObject = ({ configDir, configFile }) =>
+  Object.assign(
+    dotEnv.config({
+      path: sysPath.join(configDir, configFile),
+      silent: true
+    }) || {},
+    dotEnv.config({
+      path: sysPath.join(configDir, envPath({ configFile })),
+      silent: true
+    })
+  );
+const getEnvFile = ({ filename = ".env" }) => filename;
+const envPath = ({ configFile }) =>
+  process.env.BABEL_ENV === "development" || process.env.BABEL_ENV === undefined
+    ? configFile + ".development"
+    : configFile + ".production";
 
-    return {
-        visitor: {
-            ImportDeclaration: function(path, state) {
-                var options = state.opts;
+const importConfig = ({ config, configFile, path, types }) => (
+  { type, imported, local },
+  idx
+) => {
+  if (type === "ImportDefaultSpecifier") {
+    throw path
+      .get("specifiers")
+      [idx].buildCodeFrameError("Import dotenv as default is not supported.");
+  }
+  var importedId = imported.name;
+  var localId = local.name;
+  if (!config.hasOwnProperty(importedId)) {
+    throw path
+      .get("specifiers")
+      [idx].buildCodeFrameError(
+        'Try to import dotenv variable "' +
+          importedId +
+          '" which is not defined in any ' +
+          configFile +
+          " files."
+      );
+  }
 
-                if (options.replacedModuleName === undefined)
-                  return;
+  path.scope.getBinding(localId).referencePaths.forEach(refPath => {
+    refPath.replaceWith(types.valueToNode(config[importedId]));
+  });
+};
 
-                var configDir = options.configDir ? options.configDir : './';
-                var configFile = options.filename ? options.filename : '.env';
+module.exports = ({ types }) => ({
+  visitor: {
+    ImportDeclaration: (path, { opts: options }) => {
+      if (options.replacedModuleName === undefined) return;
+      if (path.node.source.value === options.replacedModuleName) {
+        const configFile = getEnvFile(options);
+        const config = configObject({
+          configDir: options.configDir || "./",
+          configFile
+        });
 
-                if (path.node.source.value === options.replacedModuleName) {
-                  var config = dotEnv.config({ path: sysPath.join(configDir, configFile), silent: true }) || {};
-                  var platformPath = (process.env.BABEL_ENV === 'development' || process.env.BABEL_ENV === undefined)
-                                          ? configFile + '.development'
-                                          : configFile + '.production';
-                  var config = Object.assign(config, dotEnv.config({ path: sysPath.join(configDir, platformPath), silent: true }));
+        path.node.specifiers.forEach(
+          importConfig({ path, config, configFile, types })
+        );
 
-                  path.node.specifiers.forEach(function(specifier, idx){
-                    if (specifier.type === "ImportDefaultSpecifier") {
-                      throw path.get('specifiers')[idx].buildCodeFrameError('Import dotenv as default is not supported.')
-                    }
-                    var importedId = specifier.imported.name
-                    var localId = specifier.local.name;
-                    if(!(config.hasOwnProperty(importedId))) {
-                      throw path.get('specifiers')[idx].buildCodeFrameError('Try to import dotenv variable "' + importedId + '" which is not defined in any ' + configFile + ' files.')
-                    }
-
-                    var binding = path.scope.getBinding(localId);
-                    binding.referencePaths.forEach(function(refPath){
-                      refPath.replaceWith(t.valueToNode(config[importedId]))
-                    });
-                  })
-
-                  path.remove();
-                }
-            }
-        }
+        path.remove();
+      }
     }
-}
+  }
+});
