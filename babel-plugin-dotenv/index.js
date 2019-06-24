@@ -15,10 +15,8 @@ const configObject = ({ configDir, configFile }) =>
     })
   );
 const getEnvFile = ({ filename = ".env" }) => filename;
-const envPath = ({ configFile }) =>
-  process.env.BABEL_ENV === "development" || process.env.BABEL_ENV === undefined
-    ? configFile + ".development"
-    : configFile + ".production";
+const envPath = ({ configFile, env = process.env.BABEL_ENV }) =>
+  `${configFile}.${env || "development"}`;
 
 const importConfig = ({ config, configFile, path, types }) => (
   { type, imported, local },

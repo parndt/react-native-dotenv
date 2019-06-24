@@ -54,6 +54,13 @@ describe('myself in some tests', function() {
     process.env['BABEL_ENV'] = undefined;
   })
 
+  it('should load let .env.test overwrite .env', function(){
+    process.env['BABEL_ENV'] = 'test';
+    var result = babel.transformFileSync('test/fixtures/test-env/source.js')
+    expect(result.code).to.be('\'use strict\';\n\nconsole.log(\'abc123\');\nconsole.log(\'foobar\');')
+    process.env['BABEL_ENV'] = undefined;
+  });
+
   it('should support `as alias` import syntax', function(){
     var result = babel.transformFileSync('test/fixtures/as-alias/source.js')
     expect(result.code).to.be('\'use strict\';\n\nvar a = \'abc123\';\nvar b = \'username\';')
